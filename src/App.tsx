@@ -17,6 +17,7 @@ import Produtos from "./pages/Produtos";
 import Alertas from "./pages/Alertas";
 import Integracao from "./pages/Integracao";
 import Configuracoes from "./pages/Configuracoes";
+import MlCallback from "./pages/MlCallback";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,6 +33,7 @@ const App = () => (
             <Route path="/" element={<Navigate to="/app" replace />} />
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/callback" element={<MlCallback />} />
             <Route path="/app" element={<AppLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="calculadora" element={<Calculadora />} />
