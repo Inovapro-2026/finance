@@ -610,6 +610,7 @@ export type Database = {
         | "ml_connected"
         | "ml_disconnected"
         | "ai_chat"
+        | "login"
       alert_severity: "info" | "warning" | "danger"
       app_role: "admin" | "member" | "operador"
     }
@@ -749,6 +750,7 @@ export const Constants = {
         "ml_connected",
         "ml_disconnected",
         "ai_chat",
+        "login",
       ],
       alert_severity: ["info", "warning", "danger"],
       app_role: ["admin", "member", "operador"],
