@@ -610,8 +610,9 @@ export type Database = {
         | "ml_connected"
         | "ml_disconnected"
         | "ai_chat"
+        | "login"
       alert_severity: "info" | "warning" | "danger"
-      app_role: "admin" | "member"
+      app_role: "admin" | "member" | "operador"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -749,9 +750,10 @@ export const Constants = {
         "ml_connected",
         "ml_disconnected",
         "ai_chat",
+        "login",
       ],
       alert_severity: ["info", "warning", "danger"],
-      app_role: ["admin", "member"],
+      app_role: ["admin", "member", "operador"],
     },
   },
 } as const

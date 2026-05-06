@@ -6,8 +6,8 @@ const corsHeaders = {
 };
 
 const INITIAL_USERS = [
-  { email: "maiconsillva2025@gmail.com", password: "1285041", nome: "Maicon Silva", cargo: "Sócio" },
-  { email: "ronydias642@gmail.com", password: "1285041", nome: "Rony Dias", cargo: "Sócio" },
+  { email: "maiconsillva2025@gmail.com", password: "1285041", nome: "Maicon Silva", cargo: "Sócio", role: "admin" },
+  { email: "ronydias642@gmail.com", password: "1285041", nome: "Rony Dias", cargo: "Sócio", role: "operador" },
 ];
 
 Deno.serve(async (req) => {
@@ -21,9 +21,22 @@ Deno.serve(async (req) => {
   const results: any[] = [];
   for (const u of INITIAL_USERS) {
     const { data: existing } = await supabase.auth.admin.listUsers();
-    const found = existing?.users.find((x) => x.email === u.email);
+    const found = existing?.users.find((x: any) => x.email === u.email);
     if (found) {
-      results.push({ email: u.email, status: "exists" });
+      // Ensure role exists
+      const { data: roleExists } = await supabase
+        .from("user_roles")
+        .select("id")
+        .eq("user_id", found.id)
+        .eq("role", u.role)
+        .maybeSingle();
+      if (!roleExists) {
+        await supabase.from("user_roles").upsert(
+          { user_id: found.id, role: u.role },
+          { onConflict: "user_id,role" }
+        );
+      }
+      results.push({ email: u.email, status: "exists", role: u.role });
       continue;
     }
     const { data, error } = await supabase.auth.admin.createUser({
@@ -35,9 +48,8 @@ Deno.serve(async (req) => {
     if (error) {
       results.push({ email: u.email, status: "error", error: error.message });
     } else {
-      // promote to admin
-      await supabase.from("user_roles").insert({ user_id: data.user!.id, role: "admin" });
-      results.push({ email: u.email, status: "created" });
+      await supabase.from("user_roles").insert({ user_id: data.user!.id, role: u.role });
+      results.push({ email: u.email, status: "created", role: u.role });
     }
   }
 
