@@ -7,6 +7,7 @@ const corsHeaders = {
 
 const ML_CLIENT_ID = Deno.env.get("ML_CLIENT_ID")!;
 const ML_CLIENT_SECRET = Deno.env.get("ML_CLIENT_SECRET")!;
+const ML_REDIRECT_URI = "https://inovaproshop.lovable.app/callback";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -14,15 +15,44 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const action = url.searchParams.get("action");
 
-  // Public callback (no auth)
-  if (action === "callback") {
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state"); // user_id
-    const redirectUri = `${Deno.env.get("SUPABASE_URL")}/functions/v1/ml-oauth?action=callback`;
+  // Auth helper
+  const getUser = async () => {
+    const authHeader = req.headers.get("Authorization");
+    const supabaseUser = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!,
+      { global: { headers: { Authorization: authHeader ?? "" } } },
+    );
+    const { data } = await supabaseUser.auth.getUser();
+    return data?.user ?? null;
+  };
 
-    if (!code || !state) {
-      return new Response("Missing code or state", { status: 400 });
+  // Generate authorization URL
+  if (action === "authorize-url") {
+    const user = await getUser();
+    if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    const authUrl = `https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=${ML_CLIENT_ID}&redirect_uri=${encodeURIComponent(ML_REDIRECT_URI)}&state=${user.id}`;
+    console.log("[ml-oauth] authorize-url generated, redirect_uri:", ML_REDIRECT_URI, "client_id:", ML_CLIENT_ID);
+    return new Response(JSON.stringify({ url: authUrl }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  // Exchange code for token (called from frontend /callback page)
+  if (action === "exchange") {
+    const user = await getUser();
+    if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+    let body: any;
+    try { body = await req.json(); } catch { body = {}; }
+    const code = body.code;
+
+    if (!code) {
+      return new Response(JSON.stringify({ error: "Missing code" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
+
+    console.log("[ml-oauth] exchange - code:", code, "redirect_uri:", ML_REDIRECT_URI, "client_id:", ML_CLIENT_ID);
 
     const tokenRes = await fetch("https://api.mercadolibre.com/oauth/token", {
       method: "POST",
@@ -32,26 +62,27 @@ Deno.serve(async (req) => {
         client_id: ML_CLIENT_ID,
         client_secret: ML_CLIENT_SECRET,
         code,
-        redirect_uri: redirectUri,
+        redirect_uri: ML_REDIRECT_URI,
       }),
     });
     const tok = await tokenRes.json();
+    console.log("[ml-oauth] token response status:", tokenRes.status, "body:", JSON.stringify(tok));
+
     if (!tokenRes.ok) {
-      return new Response(`Token error: ${JSON.stringify(tok)}`, { status: 400 });
+      return new Response(JSON.stringify({ error: `ML token error: ${tok.message || tok.error || JSON.stringify(tok)}` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // get user info
-    const meRes = await fetch(`https://api.mercadolibre.com/users/me`, {
+    // Get user info
+    const meRes = await fetch("https://api.mercadolibre.com/users/me", {
       headers: { Authorization: `Bearer ${tok.access_token}` },
     });
     const me = await meRes.json();
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
-    await supabase.from("ml_connections").upsert({
-      user_id: state,
+    const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    await admin.from("ml_connections").upsert({
+      user_id: user.id,
       ml_user_id: String(me.id ?? ""),
       ml_nickname: me.nickname ?? "",
       access_token: tok.access_token,
@@ -60,39 +91,22 @@ Deno.serve(async (req) => {
       scope: tok.scope ?? "",
     }, { onConflict: "user_id" });
 
-    // Redirect to app
-    const origin = req.headers.get("referer") || "https://lovable.dev";
-    return new Response(
-      `<html><body><script>window.location.href='${url.searchParams.get("redirect") || "/integracao"}';</script>Conectado! Redirecionando...</body></html>`,
-      { headers: { "Content-Type": "text/html" } },
-    );
-  }
-
-  // Authed actions
-  const authHeader = req.headers.get("Authorization");
-  const supabaseUser = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY")!,
-    { global: { headers: { Authorization: authHeader ?? "" } } },
-  );
-  const { data: userData } = await supabaseUser.auth.getUser();
-  if (!userData?.user) return new Response("Unauthorized", { status: 401, headers: corsHeaders });
-
-  if (action === "authorize-url") {
-    const redirectUri = `${Deno.env.get("SUPABASE_URL")}/functions/v1/ml-oauth?action=callback`;
-    const authUrl = `https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=${ML_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${userData.user.id}`;
-    return new Response(JSON.stringify({ url: authUrl }), {
+    return new Response(JSON.stringify({ ok: true, nickname: me.nickname }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
+  // Disconnect
   if (action === "disconnect") {
+    const user = await getUser();
+    if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    await admin.from("ml_connections").delete().eq("user_id", userData.user.id);
+    await admin.from("ml_connections").delete().eq("user_id", user.id);
     return new Response(JSON.stringify({ ok: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
-  return new Response("Unknown action", { status: 400, headers: corsHeaders });
+  return new Response(JSON.stringify({ error: "Unknown action" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 });
