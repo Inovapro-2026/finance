@@ -1,57 +1,71 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { AuthProvider } from "@/contexts/AuthContext";
-import AppLayout from "@/components/AppLayout";
-import Login from "./pages/Login";
-import ResetPassword from "./pages/ResetPassword";
-import Dashboard from "./pages/Dashboard";
-import Calculadora from "./pages/Calculadora";
-import Mercado from "./pages/Mercado";
-import Atividades from "./pages/Atividades";
-import ChatIA from "./pages/ChatIA";
-import ChatEquipe from "./pages/ChatEquipe";
-import Produtos from "./pages/Produtos";
-import Alertas from "./pages/Alertas";
-import Integracao from "./pages/Integracao";
-import Configuracoes from "./pages/Configuracoes";
-import MlCallback from "./pages/MlCallback";
-import NotFound from "./pages/NotFound";
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-const queryClient = new QueryClient();
+import { useState } from 'react';
+import { AuthProvider, useAuth } from './hooks/useAuth';
+import { AuthPage } from './components/AuthPage';
+import { Layout } from './components/Layout';
+import { FinanceDashboard } from './components/FinanceDashboard';
+import { CardPage } from './components/CardPage';
+import { AnalysisPage } from './components/AnalysisPage';
+import { ProfilePage } from './components/ProfilePage';
+import { TimeDashboard } from './components/TimeDashboard';
+import type { AppMode, ActiveTab } from './types';
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
-          <Routes>
-            <Route path="/" element={<Navigate to="/app" replace />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/callback" element={<MlCallback />} />
-            <Route path="/app" element={<AppLayout />}>
-              <Route index element={<Dashboard />} />
-              <Route path="calculadora" element={<Calculadora />} />
-              <Route path="mercado" element={<Mercado />} />
-              <Route path="produtos" element={<Produtos />} />
-              <Route path="atividades" element={<Atividades />} />
-              <Route path="ia" element={<ChatIA />} />
-              <Route path="equipe" element={<ChatEquipe />} />
-              <Route path="alertas" element={<Alertas />} />
-              <Route path="integracao" element={<Integracao />} />
-              <Route path="configuracoes" element={<Configuracoes />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+function AppContent() {
+  const { user, loading } = useAuth();
+  const [mode, setMode] = useState<AppMode>('finance');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
 
-export default App;
+  if (loading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#0c0c0c]">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-primary border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthPage />;
+  }
+
+  return (
+    <Layout mode={mode} onModeChange={setMode} activeTab={activeTab} onTabChange={setActiveTab}>
+      {mode === 'finance' ? (
+        <>
+          {activeTab === 'dashboard' && <FinanceDashboard />}
+          {activeTab === 'card' && <CardPage />}
+          {activeTab === 'analysis' && <AnalysisPage />}
+          {activeTab === 'profile' && <ProfilePage />}
+        </>
+      ) : (
+        <>
+          {activeTab === 'dashboard' && <TimeDashboard />}
+          {activeTab === 'profile' && <ProfilePage />}
+          {/* For Tempo, we reuse Profile, and Dashboard is the task list */}
+          {(activeTab === 'card' || activeTab === 'analysis') && (
+            <div className="flex h-full flex-col items-center justify-center p-8 text-center text-gray-500">
+              <p>Funcionalidade em desenvolvimento para o modo Tempo.</p>
+              <button 
+                onClick={() => setActiveTab('dashboard')}
+                className="mt-4 text-brand-primary"
+              >
+                Voltar ao Início
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </Layout>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}

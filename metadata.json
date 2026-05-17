@@ -1,0 +1,12 @@
+{
+  "name": "INOVAPRO Finance & Tempo",
+  "description": "Uma plataforma premium de gestão financeira e produtividade com interface fintech, cartões 3D e comandos de voz inteligentes.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "PWA",
+    "Gestão Financeira",
+    "Gestão de Tempo"
+  ]
+}
